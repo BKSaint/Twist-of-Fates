@@ -17,7 +17,7 @@ using static UnityEditor.Experimental.GraphView.GraphView;
 using TMPro;
 
 
-
+// git test
 class GameController : MonoBehaviour
 {
     public static UnityEngine.Vector3 deckPosition = new UnityEngine.Vector3(0,2,0);
@@ -171,11 +171,7 @@ class GameController : MonoBehaviour
                 }
             } // if (shuffle) Shuffle();
             GameController.Instance.StartCoroutine(SpawnCard(deckParent));
-            // Start the coroutine to spawn cards with delay
         }
-
-        // Coroutine to handle card spawning with delay
-
 
         public IEnumerator SpawnCard(Transform deckParent)
         {
@@ -183,7 +179,6 @@ class GameController : MonoBehaviour
             foreach (Card card in localDeck)
                 {
                     string cardName = $"Card_{card.suit}{card.rank}";
-                    Debug.Log($"Prefabs/Individual Pieces/Cards/{card.suit}s/{cardName}");
                     GameObject cardPrefab = Resources.Load<GameObject>($"Prefabs/Individual Pieces/Cards/{card.suit}s/{cardName}");
                     if (cardPrefab != null)
                     {
@@ -212,16 +207,11 @@ class GameController : MonoBehaviour
                         }
 
                         visualDeck.Add(visualCard);
-
-                    // Add a delay between card creations (adjust the time as needed)
-                    // 0.1f = 100ms delay, adjust as necessar
                     yield return new WaitForSeconds(0.1f);
-                    // After yield
-                    
                     }
                     else
                     {
-                        Debug.LogError($"Card prefab {cardName} not found!");
+                        Debug.LogError($"Card prefab {cardName} not found!"); 
                     }
                 }
         }
