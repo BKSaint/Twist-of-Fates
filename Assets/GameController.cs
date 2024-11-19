@@ -15,18 +15,23 @@ using System.Collections.Generic;
 using System.Collections;
 using static UnityEditor.Experimental.GraphView.GraphView;
 using TMPro;
+using System.Timers;
+using Unity.VisualScripting;
 
 
-// git test
+
 class GameController : MonoBehaviour
 {
     public static UnityEngine.Vector3 deckPosition = new UnityEngine.Vector3(0,2,0);
     public static GameController Instance { get; private set; }
-    public Transform deckParent;
+    public Transform DeckParent;
     public Transform GamesTable;
+    public Transform Selection1;
+    public Transform Selection2;
     public TMP_Text messageText;
     private Deck deck;
     private List<Player> players;
+    public
 
     void Awake()
     {
@@ -42,23 +47,37 @@ class GameController : MonoBehaviour
     }
     void Start()
     {
-        Player player1 = new Player(false, 1); // User
-        Player player2 = new Player(true, 2); // CPUa
-        deck = new Deck(1, deckParent, GamesTable, true);
+        Player player1 = new Player(false, 1, Selection1); // User
+        Player player2 = new Player(true, 2, Selection2); // CPUa
+        List<Transform> Selections = new List<Transform> { Selection1, Selection2 };
+        
 
+        deck = new Deck(1, DeckParent, GamesTable, true);
         players = new List<Player> { player1, player2 };
+        int deal = 1;
+
 
         StartCoroutine(GameLoop());
         IEnumerator GameLoop()
         {
             while (deck.GetBackendDeck().Count >= 6)
             {
+                
                 foreach (Player player in players)
                 {
-                    CardSelection cards = new CardSelection(deck, player);
+                    yield return new WaitForSeconds(5);
+                    CardSelection cards = new CardSelection(deck, player, (deal*3));
                     yield return StartCoroutine(cards.PromptPick(messageText)); // Wait for user to pick a card
+                    yield return new WaitForSeconds(1);
+
+                    messageText.text = $"{player.name} picked a card!";
+                    yield return new WaitForSeconds(2);
+
+
                 }
+                deal++;
             }
+            
             messageText.text = "You ran out of cards!";
             yield return new WaitForSeconds(2);
 
@@ -76,11 +95,14 @@ class GameController : MonoBehaviour
         public string name;
         public int id;
         public bool cpu;
-        public Player(bool cpu, int id)
+        public Transform Selection;
+
+        public Player(bool cpu, int id, Transform Selection)
         {
             this.name = "Player" + id;
             this.id = id;
             this.cpu = cpu;
+            this.Selection = Selection;
         }
         public void Reset() { points = 0; }
     }
@@ -151,14 +173,14 @@ class GameController : MonoBehaviour
         private List<Card> backendDeck = new List<Card>();
         public static string[] suits = { "Diamond", "Heart", "Spade", "Club" };
         public static string[] values = { "Ace", "2", "3", "4", "5", "6", "7", "8", "9", "10", "Jack", "Queen", "King" };
-        public Transform deckParent;
+        public Transform DeckParent;
         private Transform GamesTable;
         public TMP_Text messageText;
 
-        public Deck(int copies, Transform deckParent, Transform GamesTable, bool shuffle)
+        public Deck(int copies, Transform DeckParent, Transform GamesTable, bool shuffle)
         {
             this.GamesTable = GamesTable;
-            this.deckParent = deckParent;
+            this.DeckParent = DeckParent;
             for (int i = 0; i < copies; i++)
             {
                 foreach (string value in values)
@@ -169,11 +191,11 @@ class GameController : MonoBehaviour
                         backendDeck.Add(card1);
                     }
                 }
-            } // if (shuffle) Shuffle();
-            GameController.Instance.StartCoroutine(SpawnCard(deckParent));
+            } if (shuffle) Shuffle();
+            GameController.Instance.StartCoroutine(SpawnCard(DeckParent));
         }
 
-        public IEnumerator SpawnCard(Transform deckParent)
+        public IEnumerator SpawnCard(Transform DeckParent)
         {
             List<Card> localDeck = new List<Card>(backendDeck);
             foreach (Card card in localDeck)
@@ -182,31 +204,34 @@ class GameController : MonoBehaviour
                     GameObject cardPrefab = Resources.Load<GameObject>($"Prefabs/Individual Pieces/Cards/{card.suit}s/{cardName}");
                     if (cardPrefab != null)
                     {
-
-                        // Spawn the card and apply rotation
-                        GameObject visualCard = Instantiate(cardPrefab, deckPosition, UnityEngine.Quaternion.Euler(90, 0, 0), GamesTable);
+                        
+                  
+                        GameObject visualCard = Instantiate(cardPrefab, deckPosition, UnityEngine.Quaternion.Euler(90, 0, 0), DeckParent);
+                        CardSelect cardSelect = visualCard.AddComponent<CardSelect>();
                         Rigidbody rb = visualCard.GetComponent<Rigidbody>();
+
                         if (rb != null)
                         {
                             rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
                         }
 
-                        visualCard.name = cardName;  // Set proper name 
-                        visualCard.transform.localPosition = deckPosition;  // Set relative position to GamesTable
+                        visualCard.name = cardName;
+                        visualCard.transform.localPosition = deckPosition; 
 
                         BoxCollider boxCollider = visualCard.GetComponent<BoxCollider>();
                         if (boxCollider != null)
                         {
                             UnityEngine.Vector3 newSize = boxCollider.size;
-                            newSize.z = 0.002549444f;  // Set Z to your desired thickness
+                            newSize.z = 0.002549444f;
                             boxCollider.size = newSize;
                         }
                         else
                         {
                             messageText.text = $"{visualCard.name} is missing a box collider";
                         }
-
+                        cardSelect.cardIndex = visualDeck.Count;
                         visualDeck.Add(visualCard);
+                        
                     yield return new WaitForSeconds(0.1f);
                     }
                     else
@@ -216,6 +241,7 @@ class GameController : MonoBehaviour
                 }
         }
     public List<Card> GetBackendDeck() => backendDeck;
+    public List<GameObject> GetVisualDeck() => visualDeck;
 
         public void Shuffle()
         {
@@ -236,49 +262,78 @@ class GameController : MonoBehaviour
 
     class CardSelection
     {
-        private List<Card> cards = new List<Card>();
-        private Card chosenCard;
         private Player player;
-        private Deck deckObj;
-        private List<Card> deck;
+        private Card chosenCard;
+        private bool cardisChosen;
+        private List<Card> selectionOfCards;
+        private List<Card> backendDeck;
+        private List<GameObject> visualDeck;
+        private static float offset = 0.3f;
+        
 
-        public CardSelection(Deck deckObj, Player player)
+
+        public CardSelection(Deck deckObj, Player player, int deal)
         {
-            this.deckObj = deckObj;
-            this.deck = deckObj.GetBackendDeck();
+            this.backendDeck = deckObj.GetBackendDeck();
+            this.visualDeck = deckObj.GetVisualDeck();
             this.player = player;
+            this.selectionOfCards = new List<Card>();
 
-            for (int i = 0; i < 3; i++)
+            for (int i = deal; i < (deal + 3); i++)
             {
-                var card = deck[0];
-                cards.Add(card);
-                deck.RemoveAt(0);
                 
-            }
-        }
+                int iteration = i - deal;
+                GameObject gameObject = visualDeck[i];
+                gameObject.transform.SetParent(player.Selection.transform);
+                gameObject.transform.localPosition = UnityEngine.Vector3.zero;
+                selectionOfCards.Add(backendDeck[iteration]);
 
+
+                switch (iteration) {
+                    case 0:
+                        gameObject.transform.localPosition = new UnityEngine.Vector3(offset, 0, 0);
+                        Debug.Log("Created card1");
+                        break;
+                    case 1:
+                        gameObject.transform.localPosition = new UnityEngine.Vector3(0, 0, 0);
+                        Debug.Log("Created card2");
+                        break;
+                    case 2:
+                        gameObject.transform.localPosition = new UnityEngine.Vector3(-offset, 0, 0);
+                        Debug.Log("Created card3");
+                        break;
+                }
+
+
+            }
+
+        }
         public IEnumerator PromptPick(TMP_Text messageText)
         {
             // Display cards and ask player to pick
             messageText.text = $"{player.name}, pick a card: 1-3";
             System.Random random = new System.Random();
-            int choice = player.cpu ? random.Next(1, 4) : -1;
+            int choice = player.cpu ? random.Next(1, 4) : 0;
+
 
             if (!player.cpu)
             {
-                // Wait for player input (hook into Unity's button system)
-                while (choice == -1)
+                while (!cardisChosen)
                 {
-                    yield return null; // Wait for input
-                }
+
+                }          
             }
 
-            Card chosenCard = cards[choice - 1];
+            Card chosenCard = backendDeck[choice - 1];
+            yield return new WaitForSeconds(1);
+
             EvaluatePick(chosenCard, messageText);
+
+            yield return new WaitForSeconds(1);
         }
         private void EvaluatePick(Card chosenCard, TMP_Text messageText)
         {
-            int value = cards.OrderByDescending(c => c.totalCardValue).ToList().IndexOf(chosenCard);
+            int value = backendDeck.OrderByDescending(c => c.totalCardValue).ToList().IndexOf(chosenCard);
 
             switch (value)
             {
