@@ -17,6 +17,7 @@ using static UnityEditor.Experimental.GraphView.GraphView;
 using TMPro;
 using System.Timers;
 using Unity.VisualScripting;
+using System.ComponentModel;
 
 /* totalCardValue: (initialized in Card class)
 To compare the value of each card I combined the
@@ -68,7 +69,7 @@ class GameController : MonoBehaviour
 
         deck = new Deck(1, DeckParent, GamesTable, true);
 
-        CardSelect.OnCardClicked += pickCard;
+        CardSelect.OnCardClicked += PickCard;
         StartCoroutine(GameLoop());
     }
     IEnumerator GameLoop()
@@ -99,31 +100,36 @@ class GameController : MonoBehaviour
         foreach (Player player in players) { player.Reset(); } //Resets points after game is finished    
     }
     
-    private void pickCard(int cardIndex)
+    private void PickCard(int cardIndex)
     {
         if (deck.GetBackendDeck()[cardIndex].flip == true)
         {
-            GameObject cardPicked = deck.GetVisualDeck()[cardIndex];
-            float px = cardPicked.transform.localPosition.x;
-            float py = cardPicked.transform.localPosition.y;
-            float pz = cardPicked.transform.localPosition.z;
-
-            float rx = cardPicked.transform.localRotation.x;
-
-            if (rx < 0)
-            {
-                cardPicked.transform.localRotation = UnityEngine.Quaternion.Euler(90, 0, 0);
-                cardPicked.transform.localPosition = new UnityEngine.Vector3(px, py + .5f, pz);
-            }
-            else
-            {
-                cardPicked.transform.localRotation = UnityEngine.Quaternion.Euler(-90, 0, 0);
-                cardPicked.transform.localPosition = new UnityEngine.Vector3(px, py + .5f, pz);
-            }
+            FlipCard(cardIndex);
             deck.GetBackendDeck()[cardIndex].chosen = true;
         }
     }
 
+    public void FlipCard(int cardIndex)
+    {
+        GameObject cardPicked = deck.GetVisualDeck()[cardIndex];
+        Debug.Log($"Flipped: {deck.GetBackendDeck()[cardIndex].name}");
+        float px = cardPicked.transform.localPosition.x;
+        float py = cardPicked.transform.localPosition.y;
+        float pz = cardPicked.transform.localPosition.z;
+
+        float rx = cardPicked.transform.localRotation.x;
+
+        if (rx < 0)
+        {
+            cardPicked.transform.localRotation = UnityEngine.Quaternion.Euler(90, 0, 0);
+            cardPicked.transform.localPosition = new UnityEngine.Vector3(px, py + .5f, pz);
+        }
+        else
+        {
+            cardPicked.transform.localRotation = UnityEngine.Quaternion.Euler(-90, 0, 0);
+            cardPicked.transform.localPosition = new UnityEngine.Vector3(px, py + .5f, pz);
+        }
+    }
     class Player
     {
         public int points;
@@ -144,6 +150,7 @@ class GameController : MonoBehaviour
     class Card
     {
         public int totalCardValue; // See above for definition
+        private int index;
         public int value;
         public int suitLevel;
         public string suit;
@@ -162,6 +169,7 @@ class GameController : MonoBehaviour
         {
             assignValues(card);
         }
+
         public void assignValues(string card)
         {
             var cardValues = card.Split(new string[] { " of " }, StringSplitOptions.None); // Splits  these into seperate variables
@@ -185,10 +193,16 @@ class GameController : MonoBehaviour
             this.totalCardValue = value * 10 + suitLevel;
 
             this.name = $"{card}s";
-
-
         }
 
+        public int getIndex()
+        {
+            return index;
+        }
+        public void setIndex(int index)
+        {
+            this.index = index;
+        }
 
     }
 
@@ -213,16 +227,22 @@ class GameController : MonoBehaviour
                     foreach (string suit in suits) // Fills the deck using the arrays above
                     {
                         Card card1 = new Card($"{value} of {suit}");
+                        
                         backendDeck.Add(card1);
                     }
                 }
-            } if (shuffle) Shuffle(3); 
-            GameController.Instance.StartCoroutine(SpawnCard(DeckParent));
+            } 
+            if (shuffle) Shuffle(3);
+            for (int i = 0; i < backendDeck.Count; i++) {
+                backendDeck[i].setIndex(i);
+            }
+            Instance.StartCoroutine(SpawnCard(DeckParent));
         }
 
         public IEnumerator SpawnCard(Transform DeckParent)
         {
             List<Card> localDeck = new List<Card>(backendDeck);
+            Debug.Log("Creating Deck...");
             foreach (Card card in localDeck)
                 {
                     string cardName = $"Card_{card.suit}{card.rank}";
@@ -232,6 +252,7 @@ class GameController : MonoBehaviour
                         
                   
                         GameObject visualCard = Instantiate(cardPrefab, deckPosition, UnityEngine.Quaternion.Euler(90, 0, 0), DeckParent);
+                        visualCard.transform.localScale = new UnityEngine.Vector3(2, 2, 1);
                         CardSelect cardSelect = visualCard.AddComponent<CardSelect>();
                         Rigidbody rb = visualCard.GetComponent<Rigidbody>();
 
@@ -281,7 +302,6 @@ class GameController : MonoBehaviour
                     backendDeck[j] = temp;
                 }
             }
-            Debug.Log("Deck shuffled!");
         }
     }
     
@@ -293,7 +313,7 @@ class GameController : MonoBehaviour
         private List<Card> selectionOfCards;
         private List<Card> backendDeck;
         private List<GameObject> visualDeck;
-        private static float offset = 0.3f;
+        private static float offset = 0.5f;
         private Player player;
 
 
@@ -355,21 +375,27 @@ class GameController : MonoBehaviour
                     
                 }
                 foreach (Card card in selectionOfCards)
-                    {
-                        card.flip = false;
-                        card.chosen = false;
-                    }
+                {
+                    card.flip = false;
+                }
                 Debug.Log($"You choose {chosenCard.name}");
             }
-            yield return new WaitForSeconds(1);
 
+            Debug.Log("Revealing Cards..");
+            yield return new WaitForSeconds(5);
+            foreach (Card card in selectionOfCards)
+            {
+                if (card.chosen == false) Instance.FlipCard(card.getIndex());
+            }
+            chosenCard.chosen = false;
             EvaluatePick(chosenCard, messageText);
 
             yield return new WaitForSeconds(1);
         }
         private void EvaluatePick(Card chosenCard, TMP_Text messageText)
         {
-            int value = backendDeck.OrderByDescending(c => c.totalCardValue).ToList().IndexOf(chosenCard);
+
+            int value = selectionOfCards.OrderByDescending(c => c.totalCardValue).ToList().IndexOf(chosenCard);
             switch (value)
             {
                 case 0:
