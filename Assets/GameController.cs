@@ -18,6 +18,7 @@ using TMPro;
 using System.Timers;
 using Unity.VisualScripting;
 using System.ComponentModel;
+using UnityEngine.UIElements;
 
 /* totalCardValue: (initialized in Card class)
 To compare the value of each card I combined the
@@ -42,10 +43,12 @@ class GameController : MonoBehaviour
     public Transform GamesTable;
     public Transform Selection1;
     public Transform Selection2;
-    public TMP_Text messageText;
+    public TMP_Text Text1;
+    public TMP_Text Text2;
+    public TMP_Text Player1Score;
+    public TMP_Text Player2Score;
     private Deck deck;
     private List<Player> players;
-    public
 
     void Awake()
     {
@@ -62,7 +65,7 @@ class GameController : MonoBehaviour
     void Start()
     {
         Player player1 = new Player(false, 1, Selection1); // User
-        Player player2 = new Player(true, 2, Selection2); // CPUa
+        Player player2 = new Player(true, 2, Selection1); // CPUa
         players = new List<Player> { player1, player2 };
         
         List<Transform> Selections = new List<Transform> { Selection1, Selection2 };
@@ -74,28 +77,32 @@ class GameController : MonoBehaviour
     }
     IEnumerator GameLoop()
     {
+        
         int deal = 0;
-        while (deck.GetBackendDeck().Count >= 6)
+        while ((deck.GetBackendDeck().Count - deal) >= 3 )
         {
+            
             foreach (Player player in players)
             {
-                yield return new WaitForSeconds(5);
-                CardSelection cards = new CardSelection(deck, player, (deal*3));
-                yield return StartCoroutine(cards.PromptPick(messageText)); // Wait for user to pick a card
-                yield return new WaitForSeconds(1);
+                Print(Player1Score, players[0].points.ToString(), "Player 1: ");
+                Print(Player2Score, players[1].points.ToString(), "Player 2: ");
 
-                messageText.text = $"{player.name} picked a card!";
-                yield return new WaitForSeconds(2);
+                Print(Text1, $"{player.name}'s turn.");
+                yield return new WaitForSeconds(3);
+                CardSelection cards = new CardSelection(deck, player, (deal));
+                yield return StartCoroutine(cards.PromptPick(Text1, Text2)); // Wait for user to pick a card
+                yield return new WaitForSeconds(1);
+                deal+=3;
             }
-            deal++;
+            deal+=3;
         }
             
-        messageText.text = "You ran out of cards!";
+        Text1.text = "You ran out of cards!";
         yield return new WaitForSeconds(2);
 
         List<int> points = new List<int>();
         players = players.OrderByDescending(player => player.points).ToList(); // Orders players from least to greatest based on points
-        messageText.text = $"{players[0].name} won with {players[0].points} points!"; // players[0] is the winner
+        Text1.text = $"{players[0].name} won with {players[0].points} points!"; // players[0] is the winner
 
         foreach (Player player in players) { player.Reset(); } //Resets points after game is finished    
     }
@@ -130,7 +137,37 @@ class GameController : MonoBehaviour
             cardPicked.transform.localPosition = new UnityEngine.Vector3(px, py + .5f, pz);
         }
     }
-    class Player
+    void Visibility(TMP_Text obj, bool visibility)
+    {
+        Renderer renderer = obj.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            renderer.enabled = visibility;
+        }
+    }
+    void Visibility(GameObject obj, bool visibility)
+    {
+        Renderer renderer = obj.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            renderer.enabled = visibility;
+        }
+    }
+
+    public void Print(TMP_Text text, string message, string startingMessage = "")
+    {
+        StartCoroutine(PrintLoop(text, message, startingMessage));
+    }
+    public IEnumerator PrintLoop(TMP_Text text, string message, string startingMessage = "")
+    {
+        text.text = startingMessage;
+        foreach (char letter in message)
+        {
+            text.text += letter;
+            yield return new WaitForSeconds(.04f);
+        }
+    }
+class Player
     {
         public int points;
         public string name;
@@ -210,7 +247,7 @@ class GameController : MonoBehaviour
     {
         private List<GameObject> visualDeck = new List<GameObject>();
         private List<Card> backendDeck = new List<Card>();
-        public static string[] suits = { "Diamond", "Heart", "Spade", "Club" };
+        public static string[] suits = { "Club", "Spade", "Heart", "Diamond" };
         public static string[] values = { "Ace", "2", "3", "4", "5", "6", "7", "8", "9", "10", "Jack", "Queen", "King" };
         public Transform DeckParent;
         private Transform GamesTable;
@@ -315,10 +352,11 @@ class GameController : MonoBehaviour
         private List<GameObject> visualDeck;
         private static float offset = 0.5f;
         private Player player;
-
+        private int deal;
 
         public CardSelection(Deck deckObj, Player player, int deal)
         {
+            this.deal = deal;
             this.backendDeck = deckObj.GetBackendDeck();
             this.visualDeck = deckObj.GetVisualDeck();
             this.player = player;
@@ -356,11 +394,11 @@ class GameController : MonoBehaviour
             
 
         }
-        public IEnumerator PromptPick(TMP_Text messageText)
+        public IEnumerator PromptPick(TMP_Text Text1, TMP_Text Text2)
         {
             //messageText.text = $"{player.name}, pick a card: 1-3"; 
             System.Random random = new System.Random();
-            int choice = player.cpu ? random.Next(1, 4) : 0;
+            int choice = player.cpu ? random.Next(0, 3) : 0;
             if (!player.cpu)
             {
                 while (!cardisChosen)
@@ -378,41 +416,63 @@ class GameController : MonoBehaviour
                 {
                     card.flip = false;
                 }
-                Debug.Log($"You choose {chosenCard.name}");
+                Instance.Print(Text1, $"You choose {chosenCard.name}.");
             }
+            else
+            {
+                Instance.Print(Text1, $"{player.name} is choosing...");
+                yield return new WaitForSeconds(2);
 
-            Debug.Log("Revealing Cards..");
-            yield return new WaitForSeconds(5);
+                chosenCard = selectionOfCards[choice];
+                backendDeck[choice + deal].chosen = true;
+                Instance.FlipCard(choice + deal);
+                
+            }
+            yield return new WaitForSeconds(2.5f);
+            Instance.Print(Text1, "Revealing Cards..");
+            yield return new WaitForSeconds(2);
+
             foreach (Card card in selectionOfCards)
             {
                 if (card.chosen == false) Instance.FlipCard(card.getIndex());
             }
             chosenCard.chosen = false;
-            EvaluatePick(chosenCard, messageText);
-
             yield return new WaitForSeconds(1);
-        }
-        private void EvaluatePick(Card chosenCard, TMP_Text messageText)
-        {
-
+            
             int value = selectionOfCards.OrderByDescending(c => c.totalCardValue).ToList().IndexOf(chosenCard);
             switch (value)
             {
                 case 0:
                     player.points += 10;
-                    messageText.text = $"{player.name} got the highest! (+10)";
+                    Instance.Print(Text1, $"{player.name} pulled the highest!");
+                    yield return new WaitForSeconds(1.5f);
+                    Instance.Print(Text2, "+10 points");
                     break;
                 case 1:
                     player.points += 3;
-                    messageText.text = $"{player.name} got the middle! (+3)";
+                    Instance.Print(Text1, $"{player.name} pulled the middle!");
+                    yield return new WaitForSeconds(1.5f);
+                    Instance.Print(Text2, "+3 points");
                     break;
                 case 2:
                     player.points -= 3;
-                    messageText.text = $"{player.name} got the lowest.. (-3)";
+                    Instance.Print(Text1, $"{player.name} pulled the lowest..");
+                    yield return new WaitForSeconds(1.5f);
+                    Instance.Print(Text2, "-3 points");
                     break;
             }
+            yield return new WaitForSeconds(1.5f);
+            Instance.Visibility(Text2, false);
+            Instance.Print(Text1, $"{player.name} now has {player.points} points!");
 
-            messageText.text += $"\n{player.name} now has {player.points} points!";
+            yield return new WaitForSeconds(5);
+
+            for (int i = deal; i < (deal+3); i++)
+            {
+                Debug.Log($"Card: {backendDeck[i]}");
+                Instance.Visibility(visualDeck[i], false);
+            }
+
         }
     }
 }
