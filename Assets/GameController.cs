@@ -18,6 +18,19 @@ using TMPro;
 using System.Timers;
 using Unity.VisualScripting;
 
+/* totalCardValue: (initialized in Card class)
+To compare the value of each card I combined the
+value of the most important value (1-10, Jack(11) ..etc) 
+and the suits that take precedence, which is Diamonds is 4, Hearts is 3, etc.
+Its ordered in this way -> (value)(suit); 6 of diamonds is "64" or (6)(4)
+
+For example: 
+Together that makes the lowest possible TCV (totalcardValue): 21 or 2 of clubs because its value is 2 and its suit clubs
+is the lowest of the 4, making it one
+
+The highest possible value is 144 or Ace of Diamonds, since an Ace is 14 and its the highest out of the 4
+
+*/
 
 
 class GameController : MonoBehaviour
@@ -49,43 +62,65 @@ class GameController : MonoBehaviour
     {
         Player player1 = new Player(false, 1, Selection1); // User
         Player player2 = new Player(true, 2, Selection2); // CPUa
-        List<Transform> Selections = new List<Transform> { Selection1, Selection2 };
+        players = new List<Player> { player1, player2 };
         
+        List<Transform> Selections = new List<Transform> { Selection1, Selection2 };
 
         deck = new Deck(1, DeckParent, GamesTable, true);
-        players = new List<Player> { player1, player2 };
-        int deal = 1;
 
-
+        CardSelect.OnCardClicked += pickCard;
         StartCoroutine(GameLoop());
-        IEnumerator GameLoop()
+    }
+    IEnumerator GameLoop()
+    {
+        int deal = 0;
+        while (deck.GetBackendDeck().Count >= 6)
         {
-            while (deck.GetBackendDeck().Count >= 6)
+            foreach (Player player in players)
             {
-                
-                foreach (Player player in players)
-                {
-                    yield return new WaitForSeconds(5);
-                    CardSelection cards = new CardSelection(deck, player, (deal*3));
-                    yield return StartCoroutine(cards.PromptPick(messageText)); // Wait for user to pick a card
-                    yield return new WaitForSeconds(1);
+                yield return new WaitForSeconds(5);
+                CardSelection cards = new CardSelection(deck, player, (deal*3));
+                yield return StartCoroutine(cards.PromptPick(messageText)); // Wait for user to pick a card
+                yield return new WaitForSeconds(1);
 
-                    messageText.text = $"{player.name} picked a card!";
-                    yield return new WaitForSeconds(2);
-
-
-                }
-                deal++;
+                messageText.text = $"{player.name} picked a card!";
+                yield return new WaitForSeconds(2);
             }
+            deal++;
+        }
             
-            messageText.text = "You ran out of cards!";
-            yield return new WaitForSeconds(2);
+        messageText.text = "You ran out of cards!";
+        yield return new WaitForSeconds(2);
 
-            List<int> points = new List<int>();
-            players = players.OrderByDescending(player => player.points).ToList(); // Orders players from least to greatest based on points
-            messageText.text = $"{players[0].name} won with {players[0].points} points!"; // players[0] is the winner
+        List<int> points = new List<int>();
+        players = players.OrderByDescending(player => player.points).ToList(); // Orders players from least to greatest based on points
+        messageText.text = $"{players[0].name} won with {players[0].points} points!"; // players[0] is the winner
 
-            foreach (Player player in players) { player.Reset(); } //Resets points after game is finished    
+        foreach (Player player in players) { player.Reset(); } //Resets points after game is finished    
+    }
+    
+    private void pickCard(int cardIndex)
+    {
+        if (deck.GetBackendDeck()[cardIndex].flip == true)
+        {
+            GameObject cardPicked = deck.GetVisualDeck()[cardIndex];
+            float px = cardPicked.transform.localPosition.x;
+            float py = cardPicked.transform.localPosition.y;
+            float pz = cardPicked.transform.localPosition.z;
+
+            float rx = cardPicked.transform.localRotation.x;
+
+            if (rx < 0)
+            {
+                cardPicked.transform.localRotation = UnityEngine.Quaternion.Euler(90, 0, 0);
+                cardPicked.transform.localPosition = new UnityEngine.Vector3(px, py + .5f, pz);
+            }
+            else
+            {
+                cardPicked.transform.localRotation = UnityEngine.Quaternion.Euler(-90, 0, 0);
+                cardPicked.transform.localPosition = new UnityEngine.Vector3(px, py + .5f, pz);
+            }
+            deck.GetBackendDeck()[cardIndex].chosen = true;
         }
     }
 
@@ -108,23 +143,13 @@ class GameController : MonoBehaviour
     }
     class Card
     {
+        public int totalCardValue; // See above for definition
+        public int value;
+        public int suitLevel;
         public string suit;
         public string name;
         public string rank;
-        public int value;
-        public int suitLevel;
-        public int totalCardValue;
-        /* totalCardValue:
-        To compare the value of each card I combined the
-        value of the most important value (1-10, Jack(11) ..etc) 
-        and the suits that take precedence, which is Diamonds is 4, Hearts is 3, etc.
-
-        For example: Together that makes the lowest possible TCV (totalcardValue): 21 or 2 of clubs
-                     The highest possible value is 144 or Ace of Diamonds, since an Ace is 14
-
-        */
-
-
+        public bool flip = false;
         public bool chosen = false;
 
         public Card()
@@ -191,7 +216,7 @@ class GameController : MonoBehaviour
                         backendDeck.Add(card1);
                     }
                 }
-            } if (shuffle) Shuffle();
+            } if (shuffle) Shuffle(3); 
             GameController.Instance.StartCoroutine(SpawnCard(DeckParent));
         }
 
@@ -243,18 +268,19 @@ class GameController : MonoBehaviour
     public List<Card> GetBackendDeck() => backendDeck;
     public List<GameObject> GetVisualDeck() => visualDeck;
 
-        public void Shuffle()
+        public void Shuffle(int amount)
         {
             System.Random random = new System.Random();
-
-            for (int i = backendDeck.Count - 1; i > 0; i--)
+            for (int count = 0; count < amount; count++)
             {
-                int j = random.Next(i + 1);
-                Card temp = backendDeck[i];
-                backendDeck[i] = backendDeck[j];
-                backendDeck[j] = temp;
+                for (int i = backendDeck.Count - 1; i > 0; i--)
+                {
+                    int j = random.Next(i + 1);
+                    Card temp = backendDeck[i];
+                    backendDeck[i] = backendDeck[j];
+                    backendDeck[j] = temp;
+                }
             }
-
             Debug.Log("Deck shuffled!");
         }
     }
@@ -262,14 +288,13 @@ class GameController : MonoBehaviour
 
     class CardSelection
     {
-        private Player player;
+        public bool cardisChosen = false;
         private Card chosenCard;
-        private bool cardisChosen;
         private List<Card> selectionOfCards;
         private List<Card> backendDeck;
         private List<GameObject> visualDeck;
         private static float offset = 0.3f;
-        
+        private Player player;
 
 
         public CardSelection(Deck deckObj, Player player, int deal)
@@ -283,10 +308,12 @@ class GameController : MonoBehaviour
             {
                 
                 int iteration = i - deal;
+                Debug.Log(iteration);
                 GameObject gameObject = visualDeck[i];
                 gameObject.transform.SetParent(player.Selection.transform);
                 gameObject.transform.localPosition = UnityEngine.Vector3.zero;
-                selectionOfCards.Add(backendDeck[iteration]);
+                selectionOfCards.Add(backendDeck[i]);
+                backendDeck[i].flip = true;
 
 
                 switch (iteration) {
@@ -303,28 +330,37 @@ class GameController : MonoBehaviour
                         Debug.Log("Created card3");
                         break;
                 }
-
+                
 
             }
+            
 
         }
         public IEnumerator PromptPick(TMP_Text messageText)
         {
-            // Display cards and ask player to pick
-            messageText.text = $"{player.name}, pick a card: 1-3";
+            //messageText.text = $"{player.name}, pick a card: 1-3"; 
             System.Random random = new System.Random();
             int choice = player.cpu ? random.Next(1, 4) : 0;
-
-
             if (!player.cpu)
             {
                 while (!cardisChosen)
                 {
-
-                }          
+                    foreach (Card card in selectionOfCards)
+                        if (card.chosen != false)
+                        {
+                            chosenCard = card;
+                            cardisChosen = true;
+                        }
+                    yield return null;
+                    
+                }
+                foreach (Card card in selectionOfCards)
+                    {
+                        card.flip = false;
+                        card.chosen = false;
+                    }
+                Debug.Log($"You choose {chosenCard.name}");
             }
-
-            Card chosenCard = backendDeck[choice - 1];
             yield return new WaitForSeconds(1);
 
             EvaluatePick(chosenCard, messageText);
@@ -334,7 +370,6 @@ class GameController : MonoBehaviour
         private void EvaluatePick(Card chosenCard, TMP_Text messageText)
         {
             int value = backendDeck.OrderByDescending(c => c.totalCardValue).ToList().IndexOf(chosenCard);
-
             switch (value)
             {
                 case 0:
