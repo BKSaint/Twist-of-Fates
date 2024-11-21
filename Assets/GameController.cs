@@ -43,6 +43,7 @@ class GameController : MonoBehaviour
     public Transform GamesTable;
     public Transform Selection1;
     public Transform Selection2;
+    public Light hoverLight;
     public TMP_Text Text1;
     public TMP_Text Text2;
     public TMP_Text Player1Score;
@@ -64,8 +65,9 @@ class GameController : MonoBehaviour
     }
     void Start()
     {
+
         Player player1 = new Player(false, 1, Selection1); // User
-        Player player2 = new Player(true, 2, Selection1); // CPUa
+        Player player2 = new Player(true, 2, Selection1); // CPU
         players = new List<Player> { player1, player2 };
         
         List<Transform> Selections = new List<Transform> { Selection1, Selection2 };
@@ -89,7 +91,7 @@ class GameController : MonoBehaviour
 
                 Print(Text1, $"{player.name}'s turn.");
                 yield return new WaitForSeconds(3);
-                CardSelection cards = new CardSelection(deck, player, (deal));
+                CardSelection cards = new CardSelection(deck, player, deal);
                 yield return StartCoroutine(cards.PromptPick(Text1, Text2)); // Wait for user to pick a card
                 yield return new WaitForSeconds(1);
                 deal+=3;
@@ -97,12 +99,12 @@ class GameController : MonoBehaviour
             deal+=3;
         }
             
-        Text1.text = "You ran out of cards!";
+        Print(Text1, "You ran out of cards!");
         yield return new WaitForSeconds(2);
 
         List<int> points = new List<int>();
         players = players.OrderByDescending(player => player.points).ToList(); // Orders players from least to greatest based on points
-        Text1.text = $"{players[0].name} won with {players[0].points} points!"; // players[0] is the winner
+        Print(Text1, $"{players[0].name} won with {players[0].points} points!"); // players[0] is the winner
 
         foreach (Player player in players) { player.Reset(); } //Resets points after game is finished    
     }
@@ -119,7 +121,6 @@ class GameController : MonoBehaviour
     public void FlipCard(int cardIndex)
     {
         GameObject cardPicked = deck.GetVisualDeck()[cardIndex];
-        Debug.Log($"Flipped: {deck.GetBackendDeck()[cardIndex].name}");
         float px = cardPicked.transform.localPosition.x;
         float py = cardPicked.transform.localPosition.y;
         float pz = cardPicked.transform.localPosition.z;
@@ -153,6 +154,10 @@ class GameController : MonoBehaviour
             renderer.enabled = visibility;
         }
     }
+    void Visibility(Light obj, bool visibility)
+    {
+        obj.enabled = visibility;
+    }
 
     public void Print(TMP_Text text, string message, string startingMessage = "")
     {
@@ -167,7 +172,28 @@ class GameController : MonoBehaviour
             yield return new WaitForSeconds(.04f);
         }
     }
-class Player
+    public void moveLight(int pos)
+    {
+        switch (pos) 
+        {
+            case 0:
+                hoverLight.transform.localPosition = new UnityEngine.Vector3(3.79f, 2.58f, -3.57f);
+                break;
+            case 1:
+                hoverLight.transform.localPosition = new UnityEngine.Vector3(3.295f, 2.546f, -3.581f);
+                break;
+            case 2:
+                hoverLight.transform.localPosition = new UnityEngine.Vector3(2.796f, 2.346f, -3.635f);
+                break;
+        }
+    }
+
+    public Light getCardLight()
+    {
+        return hoverLight;
+    }
+
+    class Player
     {
         public int points;
         public string name;
@@ -279,7 +305,6 @@ class Player
         public IEnumerator SpawnCard(Transform DeckParent)
         {
             List<Card> localDeck = new List<Card>(backendDeck);
-            Debug.Log("Creating Deck...");
             foreach (Card card in localDeck)
                 {
                     string cardName = $"Card_{card.suit}{card.rank}";
@@ -366,7 +391,6 @@ class Player
             {
                 
                 int iteration = i - deal;
-                Debug.Log(iteration);
                 GameObject gameObject = visualDeck[i];
                 gameObject.transform.SetParent(player.Selection.transform);
                 gameObject.transform.localPosition = UnityEngine.Vector3.zero;
@@ -377,15 +401,12 @@ class Player
                 switch (iteration) {
                     case 0:
                         gameObject.transform.localPosition = new UnityEngine.Vector3(offset, 0, 0);
-                        Debug.Log("Created card1");
                         break;
                     case 1:
                         gameObject.transform.localPosition = new UnityEngine.Vector3(0, 0, 0);
-                        Debug.Log("Created card2");
                         break;
                     case 2:
                         gameObject.transform.localPosition = new UnityEngine.Vector3(-offset, 0, 0);
-                        Debug.Log("Created card3");
                         break;
                 }
                 
@@ -399,18 +420,26 @@ class Player
             //messageText.text = $"{player.name}, pick a card: 1-3"; 
             System.Random random = new System.Random();
             int choice = player.cpu ? random.Next(0, 3) : 0;
+            Card hoveredCard = null;
+            cardisChosen = false;
             if (!player.cpu)
-            {
+            { 
                 while (!cardisChosen)
                 {
-                    foreach (Card card in selectionOfCards)
-                        if (card.chosen != false)
+                    Instance.Visibility(Instance.getCardLight(), true);
+                    hoveredCard = DetectHover();    
+                    if (hoveredCard != null)
+                    {
+                        Instance.moveLight(selectionOfCards.IndexOf(hoveredCard));
+                        if (hoveredCard.chosen != false)
                         {
-                            chosenCard = card;
+                            Instance.moveLight(selectionOfCards.IndexOf(hoveredCard));
+                            chosenCard = hoveredCard;
                             cardisChosen = true;
                         }
+                    }
                     yield return null;
-                    
+
                 }
                 foreach (Card card in selectionOfCards)
                 {
@@ -426,7 +455,7 @@ class Player
                 chosenCard = selectionOfCards[choice];
                 backendDeck[choice + deal].chosen = true;
                 Instance.FlipCard(choice + deal);
-                
+
             }
             yield return new WaitForSeconds(2.5f);
             Instance.Print(Text1, "Revealing Cards..");
@@ -462,17 +491,36 @@ class Player
                     break;
             }
             yield return new WaitForSeconds(1.5f);
-            Instance.Visibility(Text2, false);
-            Instance.Print(Text1, $"{player.name} now has {player.points} points!");
 
+            Instance.Visibility(Text2, false);
+            Instance.Visibility(Instance.getCardLight(), false);
+            Instance.Print(Text1, $"{player.name} now has {player.points} points!");
             yield return new WaitForSeconds(5);
 
             for (int i = deal; i < (deal+3); i++)
             {
-                Debug.Log($"Card: {backendDeck[i]}");
-                Instance.Visibility(visualDeck[i], false);
+                visualDeck[i].transform.localPosition = new UnityEngine.Vector3(20, 20, 20);
+                cardisChosen = false;
+            }
+        }
+        private Card DetectHover()
+        {
+            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+            RaycastHit hit;
+
+            if (Physics.Raycast(ray, out hit))
+            {
+                for (int i = 0; i < selectionOfCards.Count; i++)
+                {
+                    
+                    if (hit.collider.gameObject == visualDeck[i+deal])
+                    {
+                        return selectionOfCards[i];
+                    }
+                }
             }
 
+            return null; 
         }
     }
 }
